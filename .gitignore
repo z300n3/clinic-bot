@@ -1,0 +1,23 @@
+@"
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment files
+.env
+.env.local
+**/.env
+**/.env.local
+**/.env.example
+
+# Next.js
+.next/
+**/.next/
+
+# Build
+dist/
+build/
+
+# Binary files
+*.node
+"@ | Out-File -FilePath .gitignore -Encoding utf8
