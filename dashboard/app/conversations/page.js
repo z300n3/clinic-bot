@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase, CLINIC_ID } from '../../lib/supabase';
 
@@ -21,6 +21,14 @@ function fmtTime(iso) {
 }
 
 export default function ConversationsPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-16 text-gray-400">جار التحميل...</div>}>
+      <ConversationsContent />
+    </Suspense>
+  );
+}
+
+function ConversationsContent() {
   const searchParams             = useSearchParams();
   const [patients,  setPatients] = useState([]);
   const [selected,  setSelected] = useState(searchParams.get('phone') || null);
