@@ -30,13 +30,13 @@ export default function AvailabilityPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">🗓️ إدارة مواعيد الدكتور</h1>
 
-      {/* Tab bar */}
-      <div className="flex gap-2 border-b border-gray-200 pb-0">
+      {/* Tab bar — scrollable on mobile */}
+      <div className="flex gap-2 border-b border-gray-200 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px ${
+            className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px min-h-[44px] ${
               tab === t.id
                 ? 'border-blue-600 text-blue-600 bg-white'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
@@ -203,17 +203,21 @@ function WeeklyTab() {
                 <span className="text-sm text-gray-400 italic">إجازة</span>
               ) : (
                 <div className="flex flex-col gap-2 flex-1">
-                  {/* Working hours row */}
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="text-xs text-gray-500">من</span>
-                    <input type="time" value={day.start_time}
-                      onChange={(e) => setTime(i, 'start_time', e.target.value)}
-                      className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    <span className="text-xs text-gray-500">إلى</span>
-                    <input type="time" value={day.end_time}
-                      onChange={(e) => setTime(i, 'end_time', e.target.value)}
-                      className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    <span className="text-xs text-gray-400">(لحساب وقت الدور)</span>
+                  {/* Working hours row — stacks on mobile */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-6">من</span>
+                      <input type="time" value={day.start_time}
+                        onChange={(e) => setTime(i, 'start_time', e.target.value)}
+                        className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 min-h-[44px]" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-6">إلى</span>
+                      <input type="time" value={day.end_time}
+                        onChange={(e) => setTime(i, 'end_time', e.target.value)}
+                        className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 min-h-[44px]" />
+                    </div>
+                    <span className="text-xs text-gray-400 hidden sm:inline">(لحساب وقت الدور)</span>
                   </div>
 
                   {/* Capacity row */}
@@ -343,7 +347,7 @@ function BlockedPeriodsTab() {
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">أضف فترات يكون فيها الدكتور غير متاح (سفر، إجازة، مؤتمر…)</p>
         <button onClick={() => setShowModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl">
+          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl min-h-[44px]">
           + أضف فترة غياب
         </button>
       </div>
@@ -541,7 +545,7 @@ function SpecialDaysTab() {
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">تجاوز جدول الدوام الأسبوعي ليوم واحد محدد</p>
         <button onClick={() => setShowModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl">
+          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl min-h-[44px]">
           + إضافة يوم خاص
         </button>
       </div>
@@ -642,11 +646,11 @@ function SpecialDaysTab() {
 
 function Modal({ title, children, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center md:p-4 bg-black/40">
+      <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-xl w-full md:max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h3 className="font-bold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
         <div className="p-5">{children}</div>
       </div>
