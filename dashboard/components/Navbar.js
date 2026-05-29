@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useRealtime } from '../contexts/RealtimeProvider';
+import { supabase } from '../lib/supabase';
 
 const links = [
   { href: '/',              label: 'الرئيسية',    icon: '🏠' },
@@ -11,12 +12,22 @@ const links = [
   { href: '/availability',  label: 'جدول الدوام', icon: '🗓️' },
   { href: '/patients',      label: 'المرضى',      icon: '👥' },
   { href: '/conversations', label: 'المحادثات',   icon: '💬' },
+  { href: '/settings',      label: 'الإعدادات',   icon: '⚙️' },
 ];
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const router   = useRouter();
+  const [open,       setOpen]       = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const { awaitingHumanCount } = useRealtime();
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }
 
   return (
     <>
@@ -31,7 +42,7 @@ export default function Navbar() {
         {/* Nav links */}
         <nav className="flex-1 py-3 space-y-1 overflow-y-auto">
           {links.map((l) => {
-            const active = pathname === l.href;
+            const active    = pathname === l.href;
             const showBadge = l.href === '/conversations' && awaitingHumanCount > 0;
             return (
               <div key={l.href} className="relative group px-2">
@@ -45,13 +56,11 @@ export default function Navbar() {
                 >
                   <span className="text-xl flex-shrink-0 leading-none relative">
                     {l.icon}
-                    {/* Red badge dot on icon (tablet view) */}
                     {showBadge && (
                       <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse" />
                     )}
                   </span>
                   <span className="hidden xl:block">{l.label}</span>
-                  {/* Red badge counter (desktop expanded view) */}
                   {showBadge && (
                     <span className="hidden xl:inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-xs font-bold rounded-full mr-auto animate-pulse">
                       {awaitingHumanCount}
@@ -59,7 +68,7 @@ export default function Navbar() {
                   )}
                 </Link>
 
-                {/* Tablet tooltip — appears to the left of the sidebar */}
+                {/* Tablet tooltip */}
                 <span className="xl:hidden absolute right-full top-1/2 -translate-y-1/2 flex items-center pl-2 opacity-0 group-hover:opacity-100 pointer-events-none z-50">
                   <span className="bg-gray-900 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
                     {l.label}
@@ -71,9 +80,9 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* Bell icon at bottom of sidebar */}
+        {/* Bell alert */}
         {awaitingHumanCount > 0 && (
-          <div className="px-2 pb-4">
+          <div className="px-2 pb-2">
             <Link
               href="/conversations"
               className="flex items-center justify-center xl:justify-start gap-2 px-3 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 font-semibold text-sm hover:bg-red-100 transition-colors min-h-[44px]"
@@ -82,15 +91,25 @@ export default function Navbar() {
                 🔔
                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse" />
               </span>
-              <span className="hidden xl:block">
-                {awaitingHumanCount} بانتظار رد
-              </span>
+              <span className="hidden xl:block">{awaitingHumanCount} بانتظار رد</span>
             </Link>
           </div>
         )}
+
+        {/* Logout */}
+        <div className="px-2 pb-4">
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="w-full flex items-center justify-center xl:justify-start gap-3 px-3 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors min-h-[44px] disabled:opacity-50"
+          >
+            <span className="text-xl flex-shrink-0 leading-none">🚪</span>
+            <span className="hidden xl:block">{loggingOut ? 'جاري الخروج...' : 'تسجيل الخروج'}</span>
+          </button>
+        </div>
       </aside>
 
-      {/* ── Mobile: hamburger button (top-right, 44×44) ────────────────────── */}
+      {/* ── Mobile: hamburger button ───────────────────────────────────────── */}
       <button
         onClick={() => setOpen(true)}
         aria-label="فتح القائمة"
@@ -98,14 +117,13 @@ export default function Navbar() {
       >
         <span className="text-xl leading-none relative">
           ☰
-          {/* Red dot on hamburger when there are pending handoffs */}
           {awaitingHumanCount > 0 && (
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse" />
           )}
         </span>
       </button>
 
-      {/* ── Mobile: bell icon (top-left) ───────────────────────────────────── */}
+      {/* Mobile bell icon (top-left) */}
       {awaitingHumanCount > 0 && (
         <Link
           href="/conversations"
@@ -121,7 +139,7 @@ export default function Navbar() {
         </Link>
       )}
 
-      {/* ── Mobile: dark backdrop ──────────────────────────────────────────── */}
+      {/* Mobile: dark backdrop */}
       {open && (
         <div
           className="md:hidden fixed inset-0 z-50 bg-black/50"
@@ -129,7 +147,7 @@ export default function Navbar() {
         />
       )}
 
-      {/* ── Mobile: drawer slides from right (RTL) ─────────────────────────── */}
+      {/* ── Mobile: drawer ─────────────────────────────────────────────────── */}
       <div
         className={`md:hidden fixed top-0 right-0 h-screen w-72 bg-white z-[60] shadow-2xl flex flex-col transition-transform duration-300 ${
           open ? 'translate-x-0' : 'translate-x-full'
@@ -153,7 +171,7 @@ export default function Navbar() {
         {/* Drawer links */}
         <nav className="flex-1 py-3 space-y-1 overflow-y-auto">
           {links.map((l) => {
-            const active = pathname === l.href;
+            const active    = pathname === l.href;
             const showBadge = l.href === '/conversations' && awaitingHumanCount > 0;
             return (
               <Link
@@ -183,9 +201,9 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* Drawer bottom alert */}
+        {/* Drawer bell alert */}
         {awaitingHumanCount > 0 && (
-          <div className="px-4 pb-4">
+          <div className="px-4 pb-2">
             <Link
               href="/conversations"
               onClick={() => setOpen(false)}
@@ -196,6 +214,18 @@ export default function Navbar() {
             </Link>
           </div>
         )}
+
+        {/* Drawer logout */}
+        <div className="px-4 pb-4">
+          <button
+            onClick={() => { setOpen(false); handleLogout(); }}
+            disabled={loggingOut}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors min-h-[44px] disabled:opacity-50"
+          >
+            <span className="text-xl">🚪</span>
+            <span>{loggingOut ? 'جاري الخروج...' : 'تسجيل الخروج'}</span>
+          </button>
+        </div>
       </div>
     </>
   );
