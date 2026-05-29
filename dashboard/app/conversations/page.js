@@ -30,6 +30,8 @@ export default function ConversationsPage() {
 }
 
 function ConversationsContent() {
+  const { clinicId, loading: clinicLoading, error: clinicError } = useClinicId();
+
   const searchParams             = useSearchParams();
   const [patients,  setPatients] = useState([]);
   const [selected,  setSelected] = useState(searchParams.get('phone') || null);
@@ -50,11 +52,12 @@ function ConversationsContent() {
 
   // ── Load patient sidebar list ─────────────────────────────────────────────
   const loadPatients = useCallback(async () => {
+    if (!clinicId) return;
     setLoadingP(true);
     const { data } = await supabase
       .from('conversations')
       .select('patient_phone, created_at')
-      .eq('clinic_id', CLINIC_ID)
+      .eq('clinic_id', clinicId)
       .order('created_at', { ascending: false });
 
     if (data) {
@@ -65,26 +68,26 @@ function ConversationsContent() {
       setPatients([...map.entries()].map(([phone, ts]) => ({ phone, ts })));
     }
     setLoadingP(false);
-  }, []);
+  }, [clinicId]);
 
   useEffect(() => { loadPatients(); }, [loadPatients]);
 
   // ── Load messages + state for selected patient ────────────────────────────
   const loadMessages = useCallback(async (phone) => {
-    if (!phone) return;
+    if (!phone || !clinicId) return;
     setLoadingM(true);
 
     const [msgRes, stateRes] = await Promise.all([
       supabase
         .from('conversations')
         .select('id, role, content, tool_calls, created_at, message_type')
-        .eq('clinic_id', CLINIC_ID)
+        .eq('clinic_id', clinicId)
         .eq('patient_phone', phone)
         .order('created_at', { ascending: true }),
       supabase
         .from('conversation_state')
         .select('state, state_data, last_message_at')
-        .eq('clinic_id', CLINIC_ID)
+        .eq('clinic_id', clinicId)
         .eq('patient_phone', phone)
         .maybeSingle(),
     ]);
@@ -92,7 +95,7 @@ function ConversationsContent() {
     setMessages(msgRes.data || []);
     setConvState(stateRes.data || null);
     setLoadingM(false);
-  }, []);
+  }, [clinicId]);
 
   useEffect(() => {
     if (selected) loadMessages(selected);
@@ -101,11 +104,11 @@ function ConversationsContent() {
 
   // ── Realtime: new messages ────────────────────────────────────────────────
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || !clinicId) return;
     const ch = supabase
       .channel('conv-rt-' + selected)
       .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'conversations', filter: `clinic_id=eq.${CLINIC_ID}` },
+        { event: 'INSERT', schema: 'public', table: 'conversations', filter: `clinic_id=eq.${clinicId}` },
         (payload) => {
           if (payload.new.patient_phone !== selected) return;
           setMessages((prev) => {
@@ -126,7 +129,7 @@ function ConversationsContent() {
       )
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [selected]);
+  }, [selected, clinicId]);
 
   // ── Auto-scroll to bottom when messages change ────────────────────────────
   useEffect(() => {
@@ -142,7 +145,7 @@ function ConversationsContent() {
     const { error } = await supabase
       .from('conversation_state')
       .update({ state: 'active', state_data: {} })
-      .eq('clinic_id', CLINIC_ID)
+      .eq('clinic_id', clinicId)
       .eq('patient_phone', selected);
 
     if (error) {
@@ -177,7 +180,7 @@ function ConversationsContent() {
       const res  = await fetch(`${BACKEND_URL}/api/messages/send`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ clinic_id: CLINIC_ID, patient_phone: selected, message: msgText }),
+        body:    JSON.stringify({ clinic_id: clinicId, patient_phone: selected, message: msgText }),
       });
       const data = await res.json();
 
@@ -199,6 +202,18 @@ function ConversationsContent() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   const stateConf = convState ? (STATE_LABELS[convState.state] || STATE_LABELS.active) : null;
+
+  if (clinicLoading) {
+    return (
+      <div className="text-center py-16 text-gray-400">
+        <div className="inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin mb-3" />
+        <p>جاري التحميل...</p>
+      </div>
+    );
+  }
+  if (clinicError) {
+    return <div className="text-center py-16 text-red-500">{clinicError}</div>;
+  }
 
   return (
     <div className="space-y-4">
