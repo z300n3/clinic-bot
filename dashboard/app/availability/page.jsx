@@ -132,7 +132,10 @@ function WeeklyTab() {
         daily_capacity: day.is_working_day ? day.daily_capacity : null,
       }));
 
-      const { error } = await supabase.from('availability_schedules').insert(rows);
+      const { error } = await supabase.from('availability_schedules').upsert(rows, {
+        onConflict:       'clinic_id,day_of_week',
+        ignoreDuplicates: false,
+      });
       if (error) throw error;
 
       showToast('تم حفظ جدول الدوام بنجاح ✅', 'success');
