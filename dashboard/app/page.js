@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { supabase, CLINIC_ID } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import { useClinicId } from '../hooks/useClinicId';
 
 // ── Baghdad timezone helpers (UTC+3, no DST) ────────────────────────────────
 const BAGHDAD_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -46,6 +47,8 @@ const STATUS_CLASSES = {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function TodayViewPage() {
+  const { clinicId, loading: clinicLoading, error: clinicError } = useClinicId();
+
   const [appointments, setAppointments] = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(null);
@@ -59,6 +62,7 @@ export default function TodayViewPage() {
 
   // ── Fetch today's appointments ────────────────────────────────────────────
   const fetchToday = useCallback(async () => {
+    if (!clinicId) return;
     setLoading(true);
     setError(null);
 
@@ -67,7 +71,7 @@ export default function TodayViewPage() {
     const { data, error: fetchErr } = await supabase
       .from('appointments')
       .select('id, patient_name, scheduled_at, status, queue_number, reason, patients(phone_number)')
-      .eq('clinic_id', CLINIC_ID)
+      .eq('clinic_id', clinicId)
       .gte('scheduled_at', start.toISOString())
       .lte('scheduled_at', end.toISOString())
       .order('scheduled_at', { ascending: true })
@@ -79,21 +83,22 @@ export default function TodayViewPage() {
       setAppointments(data || []);
     }
     setLoading(false);
-  }, []);
+  }, [clinicId]);
 
   useEffect(() => { fetchToday(); }, [fetchToday]);
 
   // ── Realtime ──────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!clinicId) return;
     const ch = supabase
       .channel('today-view-rt')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'appointments', filter: `clinic_id=eq.${CLINIC_ID}` },
+        { event: '*', schema: 'public', table: 'appointments', filter: `clinic_id=eq.${clinicId}` },
         () => fetchToday()
       )
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [fetchToday]);
+  }, [clinicId, fetchToday]);
 
   // ── Update status (optimistic) ────────────────────────────────────────────
   async function updateStatus(id, newStatus) {
@@ -108,7 +113,7 @@ export default function TodayViewPage() {
       .from('appointments')
       .update({ status: newStatus })
       .eq('id', id)
-      .eq('clinic_id', CLINIC_ID);
+      .eq('clinic_id', clinicId);
 
     if (updateErr) {
       // Revert on failure
@@ -130,6 +135,19 @@ export default function TodayViewPage() {
     ['cancelled', 'cancelled_by_clinic', 'no_show'].includes(a.status)
   ).length;
   const total         = appointments.length;
+
+  // ── Clinic loading / error guard ─────────────────────────────────────────
+  if (clinicLoading) {
+    return (
+      <div className="text-center py-16 text-gray-400">
+        <div className="inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin mb-3" />
+        <p>جاري التحميل...</p>
+      </div>
+    );
+  }
+  if (clinicError) {
+    return <div className="text-center py-16 text-red-500">{clinicError}</div>;
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

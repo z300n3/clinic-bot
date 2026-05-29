@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { supabase, CLINIC_ID } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
+import { useClinicId } from '../../hooks/useClinicId';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
 

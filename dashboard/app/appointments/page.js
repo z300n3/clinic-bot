@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, CLINIC_ID } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
+import { useClinicId } from '../../hooks/useClinicId';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
 
@@ -40,6 +41,8 @@ function isPast(iso) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AppointmentsPage() {
+  const { clinicId, loading: clinicLoading, error: clinicError } = useClinicId();
+
   const [appointments,    setAppointments]    = useState([]);
   const [loading,         setLoading]         = useState(true);
   const [dateFilter,      setDateFilter]      = useState(() => new Date().toISOString().slice(0, 10));
@@ -62,11 +65,12 @@ export default function AppointmentsPage() {
   };
 
   const fetchAppointments = useCallback(async () => {
+    if (!clinicId) return;
     setLoading(true);
     let query = supabase
       .from('appointments')
       .select('id, scheduled_at, queue_number, status, reason, patient_name, created_at, patients(phone_number, no_show_count)')
-      .eq('clinic_id', CLINIC_ID)
+      .eq('clinic_id', clinicId)
       .order('scheduled_at', { ascending: true })
       .order('queue_number', { ascending: true });
 
@@ -80,21 +84,22 @@ export default function AppointmentsPage() {
     const { data, error } = await query;
     if (!error) setAppointments(data || []);
     setLoading(false);
-  }, [dateFilter, statusFilter]);
+  }, [clinicId, dateFilter, statusFilter]);
 
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
 
   // Realtime
   useEffect(() => {
+    if (!clinicId) return;
     const ch = supabase
       .channel('appts-rt')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'appointments', filter: `clinic_id=eq.${CLINIC_ID}` },
+        { event: '*', schema: 'public', table: 'appointments', filter: `clinic_id=eq.${clinicId}` },
         () => fetchAppointments()
       )
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [fetchAppointments]);
+  }, [clinicId, fetchAppointments]);
 
   function openCancelModal(appt) {
     setModal({ appointment: appt });
@@ -269,6 +274,18 @@ export default function AppointmentsPage() {
     }
 
     return null;
+  }
+
+  if (clinicLoading) {
+    return (
+      <div className="text-center py-16 text-gray-400">
+        <div className="inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin mb-3" />
+        <p>جاري التحميل...</p>
+      </div>
+    );
+  }
+  if (clinicError) {
+    return <div className="text-center py-16 text-red-500">{clinicError}</div>;
   }
 
   return (

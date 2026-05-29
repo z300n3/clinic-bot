@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, CLINIC_ID } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -18,7 +18,27 @@ const DEFAULT_WEEKLY = Array.from({ length: 7 }, (_, i) => ({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AvailabilityPage() {
-  const [tab, setTab] = useState('weekly');
+  const [tab,       setTab]       = useState('weekly');
+  const [clinicId,  setClinicId]  = useState(null);
+  const [loadingId, setLoadingId] = useState(true);
+  const [idError,   setIdError]   = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setIdError('غير مسجّل الدخول'); setLoadingId(false); return; }
+
+      const { data: clinic, error } = await supabase
+        .from('clinics')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (error || !clinic) { setIdError('لم يتم العثور على العيادة'); setLoadingId(false); return; }
+      setClinicId(clinic.id);
+      setLoadingId(false);
+    })();
+  }, []);
 
   const tabs = [
     { id: 'weekly',  label: '📅 أيام الدوام والعدد' },
@@ -49,9 +69,17 @@ export default function AvailabilityPage() {
 
       {/* Tab content */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-        {tab === 'weekly'  && <WeeklyTab />}
-        {tab === 'blocks'  && <BlockedPeriodsTab />}
-        {tab === 'special' && <SpecialDaysTab />}
+        {loadingId ? (
+          <div className="text-center py-12 text-gray-400">جاري التحميل...</div>
+        ) : idError ? (
+          <div className="text-center py-12 text-red-500">{idError}</div>
+        ) : (
+          <>
+            {tab === 'weekly'  && <WeeklyTab        clinicId={clinicId} />}
+            {tab === 'blocks'  && <BlockedPeriodsTab clinicId={clinicId} />}
+            {tab === 'special' && <SpecialDaysTab    clinicId={clinicId} />}
+          </>
+        )}
       </div>
     </div>
   );
@@ -61,7 +89,7 @@ export default function AvailabilityPage() {
 // Tab 1 — Weekly schedule
 // ══════════════════════════════════════════════════════════════════════════════
 
-function WeeklyTab() {
+function WeeklyTab({ clinicId }) {
   const [schedule, setSchedule] = useState(DEFAULT_WEEKLY);
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState(false);
@@ -73,7 +101,7 @@ function WeeklyTab() {
       const { data } = await supabase
         .from('availability_schedules')
         .select('day_of_week, is_working_day, daily_capacity, shifts')
-        .eq('clinic_id', CLINIC_ID)
+        .eq('clinic_id', clinicId)
         .is('specific_date', null);
 
       if (data && data.length > 0) {
@@ -91,7 +119,7 @@ function WeeklyTab() {
       } else {
         // Try to load working/closed days from clinic.working_hours as starting point
         const { data: clinic } = await supabase
-          .from('clinics').select('working_hours').eq('id', CLINIC_ID).single();
+          .from('clinics').select('working_hours').eq('id', clinicId).single();
         if (clinic?.working_hours) {
           const keys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
           setSchedule(DEFAULT_WEEKLY.map((def, i) => {
@@ -109,7 +137,7 @@ function WeeklyTab() {
       }
       setLoading(false);
     })();
-  }, []);
+  }, [clinicId]);
 
   async function handleSave() {
     setSaving(true);
@@ -118,11 +146,11 @@ function WeeklyTab() {
       await supabase
         .from('availability_schedules')
         .delete()
-        .eq('clinic_id', CLINIC_ID)
+        .eq('clinic_id', clinicId)
         .is('specific_date', null);
 
       const rows = schedule.map((day) => ({
-        clinic_id:      CLINIC_ID,
+        clinic_id:      clinicId,
         day_of_week:    day.day_of_week,
         specific_date:  null,
         is_working_day: day.is_working_day,
@@ -270,7 +298,7 @@ const EMPTY_BLOCK = {
   start_time: '08:00', end_time: '17:00', reason: '',
 };
 
-function BlockedPeriodsTab() {
+function BlockedPeriodsTab({ clinicId }) {
   const [blocks,      setBlocks]      = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [showModal,   setShowModal]   = useState(false);
@@ -283,11 +311,11 @@ function BlockedPeriodsTab() {
     const { data } = await supabase
       .from('blocked_periods')
       .select('*')
-      .eq('clinic_id', CLINIC_ID)
+      .eq('clinic_id', clinicId)
       .order('start_at', { ascending: true });
     setBlocks(data || []);
     setLoading(false);
-  }, []);
+  }, [clinicId]);
 
   useEffect(() => { loadBlocks(); }, [loadBlocks]);
 
@@ -302,7 +330,7 @@ function BlockedPeriodsTab() {
         : new Date(form.end_date + 'T' + form.end_time + ':59+03:00').toISOString();
 
       const { error } = await supabase.from('blocked_periods').insert({
-        clinic_id:   CLINIC_ID,
+        clinic_id:   clinicId,
         start_at:    startAt,
         end_at:      endAt,
         is_full_day: form.is_full_day,
@@ -481,7 +509,7 @@ function BlockRow({ block, fmtBlock, onDelete, past }) {
 
 const EMPTY_SPECIAL = { specific_date: '', is_working_day: true, daily_capacity: null };
 
-function SpecialDaysTab() {
+function SpecialDaysTab({ clinicId }) {
   const [specials,   setSpecials]   = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [showModal,  setShowModal]  = useState(false);
@@ -493,12 +521,12 @@ function SpecialDaysTab() {
     const { data } = await supabase
       .from('availability_schedules')
       .select('*')
-      .eq('clinic_id', CLINIC_ID)
+      .eq('clinic_id', clinicId)
       .not('specific_date', 'is', null)
       .order('specific_date', { ascending: true });
     setSpecials(data || []);
     setLoading(false);
-  }, []);
+  }, [clinicId]);
 
   useEffect(() => { loadSpecials(); }, [loadSpecials]);
 
@@ -507,7 +535,7 @@ function SpecialDaysTab() {
     try {
       const { error } = await supabase.from('availability_schedules').upsert(
         {
-          clinic_id:      CLINIC_ID,
+          clinic_id:      clinicId,
           specific_date:  form.specific_date,
           day_of_week:    null,
           is_working_day: form.is_working_day,
