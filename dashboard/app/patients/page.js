@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase';
 import { useClinicId } from '../../hooks/useClinicId';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -40,6 +42,102 @@ export default function PatientsPage() {
   const [historyModal, setHistoryModal] = useState(null);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Report Modal State
+  const [reportModal, setReportModal] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState('today');
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportData, setReportData] = useState(null);
+  const [clinicDetails, setClinicDetails] = useState(null);
+
+  // Fetch clinic details for the header and price
+  useEffect(() => {
+    if (!clinicId) return;
+    supabase.from('clinics').select('*').eq('id', clinicId).single().then(({data}) => {
+      if (data) setClinicDetails(data);
+    });
+  }, [clinicId]);
+
+  async function handleGenerateReport() {
+    setReportLoading(true);
+    let start, end;
+    const now = new Date();
+    
+    // Calculate dates based on reportPeriod
+    if (reportPeriod === 'today') {
+      start = new Date(now.setHours(0,0,0,0));
+      end = new Date(now.setHours(23,59,59,999));
+    } else if (reportPeriod === 'week') {
+      start = new Date(now);
+      start.setDate(now.getDate() - 7);
+      end = new Date(now.setHours(23,59,59,999));
+    } else if (reportPeriod === 'month') {
+      start = new Date(now);
+      start.setMonth(now.getMonth() - 1);
+      end = new Date(now.setHours(23,59,59,999));
+    }
+
+    let query = supabase
+      .from('appointments')
+      .select('id, scheduled_at, status, patient_name, reason, queue_number, patients(phone_number)')
+      .eq('clinic_id', clinicId)
+      .order('scheduled_at', { ascending: false });
+
+    if (reportPeriod !== 'all') {
+      query = query.gte('scheduled_at', start.toISOString()).lte('scheduled_at', end.toISOString());
+    }
+
+    const { data } = await query;
+    const appts = data || [];
+
+    // Calculate stats
+    const total = appts.length;
+    const completed = appts.filter(a => a.status === 'completed').length;
+    const noShow = appts.filter(a => a.status === 'no_show').length;
+    const cancelled = appts.filter(a => ['cancelled', 'cancelled_by_clinic'].includes(a.status)).length;
+    
+    const price = clinicDetails?.consultation_price || 0;
+    const expectedRevenue = completed * price;
+
+    setReportData({
+      appointments: appts,
+      stats: { total, completed, noShow, cancelled, expectedRevenue },
+      period: reportPeriod,
+      date: new Date().toLocaleDateString('ar-IQ'),
+    });
+    setReportLoading(false);
+  }
+
+  // Effect to trigger PDF download after render
+  useEffect(() => {
+    if (reportData && !reportLoading) {
+      setTimeout(async () => {
+        const element = document.getElementById('report-content');
+        if (element) {
+          try {
+            // make it block for rendering
+            element.style.display = 'block';
+            
+            const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`تقرير_${reportPeriod}_${new Date().getTime()}.pdf`);
+            
+            element.style.display = 'none';
+            setReportData(null);
+            setReportModal(false);
+          } catch (err) {
+            console.error('PDF generation error', err);
+            alert('حدث خطأ أثناء تصدير الـ PDF');
+            setReportData(null);
+          }
+        }
+      }, 800); // give React time to render
+    }
+  }, [reportData, reportLoading, reportPeriod]);
 
   async function openHistoryModal(patient) {
     setHistoryModal(patient);
@@ -129,7 +227,15 @@ export default function PatientsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">👥 المرضى</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-gray-900">👥 المرضى</h1>
+          <button 
+            onClick={() => setReportModal(true)}
+            className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+          >
+            <span>📄 تقرير PDF</span>
+          </button>
+        </div>
         <span className="text-sm text-gray-500">{loading ? '...' : `${patients.length} مريض`}</span>
       </div>
 
@@ -300,6 +406,127 @@ export default function PatientsPage() {
                 إغلاق
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Modal */}
+      {reportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="font-bold text-gray-900 text-lg">تصدير تقرير PDF</h3>
+              <button onClick={() => setReportModal(false)} className="text-gray-400 hover:text-gray-600">×</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">اختر الفترة الزمنية:</label>
+                <select 
+                  value={reportPeriod} 
+                  onChange={(e) => setReportPeriod(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="today">اليوم</option>
+                  <option value="week">هذا الأسبوع</option>
+                  <option value="month">هذا الشهر</option>
+                  <option value="all">كل المواعيد</option>
+                </select>
+              </div>
+              <button 
+                onClick={handleGenerateReport} 
+                disabled={reportLoading || !!reportData}
+                className="w-full bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors flex justify-center items-center gap-2"
+              >
+                {(reportLoading || reportData) ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>جاري التجهيز للتحميل...</span>
+                  </>
+                ) : (
+                  <span>تحميل التقرير</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden PDF Canvas Template */}
+      {reportData && (
+        <div style={{ position: 'fixed', top: '-20000px', left: '-20000px', width: '800px', zIndex: -1 }}>
+          <div id="report-content" className="p-10 bg-white text-black font-sans" style={{ width: '800px', minHeight: '1131px', direction: 'rtl', display: 'none' }}>
+            
+            {/* Header */}
+            <div className="text-center border-b-2 border-gray-800 pb-6 mb-6">
+              <h1 className="text-3xl font-bold mb-2">{clinicDetails?.name || 'اسم العيادة'}</h1>
+              <h2 className="text-xl text-gray-700">الدكتور: {clinicDetails?.doctor_name || '—'}</h2>
+              <p className="text-gray-500 mt-2">تاريخ التقرير: {reportData.date}</p>
+            </div>
+
+            {/* Statistics */}
+            <div className="grid grid-cols-4 gap-4 mb-8">
+              <div className="bg-gray-100 p-4 rounded-lg text-center">
+                <p className="text-gray-500 text-sm">إجمالي المواعيد</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{reportData.stats.total}</p>
+              </div>
+              <div className="bg-emerald-50 p-4 rounded-lg text-center">
+                <p className="text-emerald-600 text-sm">تم العلاج (حضروا)</p>
+                <p className="text-2xl font-bold text-emerald-700 mt-1">{reportData.stats.completed}</p>
+              </div>
+              <div className="bg-red-50 p-4 rounded-lg text-center">
+                <p className="text-red-600 text-sm">لم يحضروا</p>
+                <p className="text-2xl font-bold text-red-700 mt-1">{reportData.stats.noShow}</p>
+              </div>
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <p className="text-gray-600 text-sm">ملغى</p>
+                <p className="text-2xl font-bold text-gray-700 mt-1">{reportData.stats.cancelled}</p>
+              </div>
+            </div>
+
+            {/* Financial Summary */}
+            <div className="bg-brand-50 border border-brand-100 p-5 rounded-xl mb-8 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-brand-900 text-lg">الخلاصة المالية المتوقعة</h3>
+                <p className="text-sm text-brand-700 mt-1">بناءً على عدد المواعيد المكتملة وسعر الكشفية ({clinicDetails?.consultation_price || 0} دينار)</p>
+              </div>
+              <div className="text-3xl font-bold text-brand-700">
+                {reportData.stats.expectedRevenue.toLocaleString()} <span className="text-lg">دينار</span>
+              </div>
+            </div>
+
+            {/* Detailed Table */}
+            <div>
+              <h3 className="font-bold text-gray-900 text-lg mb-4">تفاصيل المرضى</h3>
+              <table className="w-full text-sm text-right border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-4 py-2 font-semibold">الدور</th>
+                    <th className="border border-gray-300 px-4 py-2 font-semibold">تاريخ الموعد</th>
+                    <th className="border border-gray-300 px-4 py-2 font-semibold">اسم المريض</th>
+                    <th className="border border-gray-300 px-4 py-2 font-semibold">رقم الهاتف</th>
+                    <th className="border border-gray-300 px-4 py-2 font-semibold">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.appointments.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="border border-gray-300 px-4 py-8 text-center text-gray-500">لا توجد مواعيد في هذه الفترة</td>
+                    </tr>
+                  ) : (
+                    reportData.appointments.map((a) => (
+                      <tr key={a.id}>
+                        <td className="border border-gray-300 px-4 py-2 text-center font-bold text-blue-600">{a.queue_number || '—'}</td>
+                        <td className="border border-gray-300 px-4 py-2">{fmtDate(a.scheduled_at)}</td>
+                        <td className="border border-gray-300 px-4 py-2 font-medium">{a.patient_name || '—'}</td>
+                        <td className="border border-gray-300 px-4 py-2 font-mono">{a.patients?.phone_number || '—'}</td>
+                        <td className="border border-gray-300 px-4 py-2">{STATUS_LABELS[a.status] || a.status}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
           </div>
         </div>
       )}
