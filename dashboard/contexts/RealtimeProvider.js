@@ -1,7 +1,8 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { supabase, CLINIC_ID } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import { useClinicId } from '../hooks/useClinicId';
 import { toast } from 'sonner';
 
 // ── Programmatic "ding-dong" — no MP3 file needed ────────────────────────────
@@ -40,21 +41,24 @@ export function useRealtime() {
 }
 
 export function RealtimeProvider({ children }) {
+  const { clinicId } = useClinicId();
+
   const [awaitingPhones, setAwaitingPhones] = useState([]);
   const mountedRef = useRef(true);
 
   // ── Load initial awaiting_human count on mount ────────────────────────────
   const loadInitialState = useCallback(async () => {
+    if (!clinicId) return;
     const { data } = await supabase
       .from('conversation_state')
       .select('patient_phone')
-      .eq('clinic_id', CLINIC_ID)
+      .eq('clinic_id', clinicId)
       .eq('state', 'awaiting_human');
 
     if (data && mountedRef.current) {
       setAwaitingPhones(data.map((r) => r.patient_phone));
     }
-  }, []);
+  }, [clinicId]);
 
   useEffect(() => {
     loadInitialState();
@@ -63,6 +67,7 @@ export function RealtimeProvider({ children }) {
 
   // ── Realtime: new appointments ────────────────────────────────────────────
   useEffect(() => {
+    if (!clinicId) return;
     const channel = supabase
       .channel('global-appointments-insert')
       .on(
@@ -71,7 +76,7 @@ export function RealtimeProvider({ children }) {
           event:  'INSERT',
           schema: 'public',
           table:  'appointments',
-          filter: `clinic_id=eq.${CLINIC_ID}`,
+          filter: `clinic_id=eq.${clinicId}`,
         },
         (payload) => {
           const appt = payload.new;
@@ -91,10 +96,11 @@ export function RealtimeProvider({ children }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [clinicId]);
 
   // ── Realtime: conversation_state changes ──────────────────────────────────
   useEffect(() => {
+    if (!clinicId) return;
     const channel = supabase
       .channel('global-conv-state')
       .on(
@@ -103,7 +109,7 @@ export function RealtimeProvider({ children }) {
           event:  '*',
           schema: 'public',
           table:  'conversation_state',
-          filter: `clinic_id=eq.${CLINIC_ID}`,
+          filter: `clinic_id=eq.${clinicId}`,
         },
         (payload) => {
           const row = payload.new;
@@ -133,7 +139,7 @@ export function RealtimeProvider({ children }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [clinicId]);
 
   // ── Helper: clear a specific phone from awaiting (e.g., after doctor replies)
   const clearAwaitingFor = useCallback((phone) => {
