@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS appointments (
   status           TEXT        NOT NULL DEFAULT 'scheduled'
                                CHECK (status IN ('scheduled','confirmed','completed','cancelled','cancelled_by_clinic','no_show')),
   reason           TEXT,
+  patient_name     TEXT,
+  served_by        TEXT,
   reminder_sent_at TIMESTAMPTZ,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   cancelled_at     TIMESTAMPTZ
@@ -147,8 +149,10 @@ CREATE TABLE IF NOT EXISTS blocked_periods (
   clinic_id    UUID        NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
   start_at     TIMESTAMPTZ NOT NULL,
   end_at       TIMESTAMPTZ NOT NULL,
+  is_full_day  BOOLEAN     NOT NULL DEFAULT true,
   reason       TEXT,
-  is_full_day  BOOLEAN     NOT NULL DEFAULT false,
+  substitute_doctor_name TEXT,
+  substitute_doctor_note TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT chk_block_range CHECK (end_at > start_at)
 );

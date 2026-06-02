@@ -296,6 +296,7 @@ function WeeklyTab({ clinicId }) {
 const EMPTY_BLOCK = {
   start_date: '', end_date: '', is_full_day: true,
   start_time: '08:00', end_time: '17:00', reason: '',
+  substitute_doctor_name: '', substitute_doctor_note: ''
 };
 
 function BlockedPeriodsTab({ clinicId }) {
@@ -335,6 +336,8 @@ function BlockedPeriodsTab({ clinicId }) {
         end_at:      endAt,
         is_full_day: form.is_full_day,
         reason:      form.reason || null,
+        substitute_doctor_name: form.substitute_doctor_name || null,
+        substitute_doctor_note: form.substitute_doctor_note || null,
       });
       if (error) throw error;
       setShowModal(false);
@@ -464,7 +467,23 @@ function BlockedPeriodsTab({ clinicId }) {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">اسم الطبيب البديل (اختياري)</label>
+                <input type="text" placeholder="د. محمد علي" value={form.substitute_doctor_name}
+                  onChange={(e) => setForm((f) => ({ ...f, substitute_doctor_name: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                <span className="text-[10px] text-gray-500 mt-1 block">اتركه فارغاً إذا لا يوجد بديل (سيُغلق الحجز)</span>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">ملاحظة (اختياري)</label>
+                <input type="text" placeholder="طبيب مناوب" value={form.substitute_doctor_note}
+                  onChange={(e) => setForm((f) => ({ ...f, substitute_doctor_note: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2 mt-2">
               <button onClick={handleAdd} disabled={saving || !form.start_date || !form.end_date}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2 rounded-xl text-sm disabled:opacity-50">
                 {saving ? 'جاري الحفظ...' : 'حفظ'}
@@ -487,11 +506,28 @@ function BlockRow({ block, fmtBlock, onDelete, past }) {
       <div className="flex items-center gap-3">
         <span className="text-lg">{past ? '📁' : '🚫'}</span>
         <div>
-          <p className="font-medium text-sm text-gray-800">{fmtBlock(block)}</p>
-          <p className="text-xs text-gray-500">
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-sm text-gray-800">{fmtBlock(block)}</p>
+            {block.substitute_doctor_name ? (
+              <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full font-semibold border border-green-200">
+                غياب مع بديل ✅
+              </span>
+            ) : (
+              <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-semibold border border-red-200">
+                غياب - الحجز مغلق ❌
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
             {block.is_full_day ? 'يوم كامل' : `${new Date(block.start_at).toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'})} – ${new Date(block.end_at).toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'})}`}
             {block.reason && ` · ${block.reason}`}
           </p>
+          {block.substitute_doctor_name && (
+            <p className="text-xs font-semibold text-green-600 mt-0.5">
+              الطبيب البديل: {block.substitute_doctor_name}
+              {block.substitute_doctor_note && ` (${block.substitute_doctor_note})`}
+            </p>
+          )}
         </div>
       </div>
       {!past && (

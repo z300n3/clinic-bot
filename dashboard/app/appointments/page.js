@@ -69,7 +69,7 @@ export default function AppointmentsPage() {
     setLoading(true);
     let query = supabase
       .from('appointments')
-      .select('id, scheduled_at, queue_number, status, reason, patient_name, created_at, patients(phone_number, no_show_count)')
+      .select('id, scheduled_at, queue_number, status, reason, patient_name, served_by, created_at, patients(phone_number, no_show_count)')
       .eq('clinic_id', clinicId)
       .order('scheduled_at', { ascending: true })
       .order('queue_number', { ascending: true });
@@ -343,10 +343,11 @@ export default function AppointmentsPage() {
               return (
                 <div key={appt.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-2.5">
                   {/* Name + status */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <span className="font-semibold text-gray-900 text-base leading-snug break-words">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="font-bold text-gray-900 ml-2 break-words text-lg">
                         {appt.patient_name || '—'}
+                        {appt.served_by && <span className="text-xs text-gray-500 font-normal mr-2 whitespace-nowrap"> — مع: {appt.served_by}</span>}
                       </span>
                       {noShowCount >= 3 && (
                         <span className="mr-2 inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
@@ -405,7 +406,10 @@ export default function AppointmentsPage() {
                       <tr key={appt.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-900">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="break-words">{appt.patient_name || '—'}</span>
+                            <span className="break-words">
+                              {appt.patient_name || '—'}
+                              {appt.served_by && <span className="text-xs text-gray-500 font-normal mr-2 whitespace-nowrap"> — مع: {appt.served_by}</span>}
+                            </span>
                             {noShowCount >= 3 && (
                               <span className="inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full whitespace-nowrap">
                                 ⚠️ تغيّب {noShowCount} مرات
