@@ -8,7 +8,21 @@ import { supabase } from '../../lib/supabase';
 const SPECIALTIES = [
   'طب عام', 'أسنان', 'جلدية', 'عيون',
   'أنف وأذن وحنجرة', 'باطنية', 'قلبية', 'عظام',
-  'نسائية وتوليد', 'أطفال', 'مسالك بولية', 'أخرى',
+  'نسائية وتوليد', 'أطفال',  'التغذية والدايت', 'أخرى'
+];
+
+const DISEASE_SUGGESTIONS = [
+  'السكري', 'ضغط الدم', 'أمراض القلب', 'الربو', 'الغدة الدرقية', 'القولون',
+  'قرحة المعدة', 'فقر الدم', 'الكولسترول', 'الصداع النصفي', 'الجيوب الأنفية',
+  'التهاب المفاصل', 'أمراض الكلى', 'أمراض الكبد', 'الروماتيزم', 'النقرس',
+  'حساسية الصدر', 'السمنة', 'سوء التغذية', 'التهاب المسالك البولية',
+  'أمراض الجهاز التنفسي', 'أمراض الجهاز الهضمي', 'العقم', 'أمراض النساء',
+  'متابعة الحمل', 'الأمراض الجلدية', 'تساقط الشعر', 'حب الشباب', 'الأكزيما',
+  'الصدفية', 'أمراض العيون', 'ضعف النظر', 'أمراض الأنف والأذن والحنجرة',
+  'التهاب اللوزتين', 'ضعف السمع', 'أمراض الأعصاب', 'الصرع', 'الجلطات',
+  'أمراض العظام', 'الكسور', 'هشاشة العظام', 'أمراض الأطفال', 'تأخر النمو',
+  'الأمراض النفسية', 'الاكتئاب', 'القلق', 'الأمراض التناسلية', 'البروستات',
+  'العلاج الطبيعي', 'أمراض الفم والأسنان', 'الجراحة العامة', 'البواسير'
 ];
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -85,6 +99,8 @@ export default function SettingsPage() {
   const [specialty,     setSpecialty]     = useState('');
   const [price,         setPrice]         = useState('');
   const [address,       setAddress]       = useState('');
+  const [treatedDiseases,setTreatedDiseases]= useState('');
+  const [showDiseasesModal, setShowDiseasesModal] = useState(false);
   const [mapLink,       setMapLink]       = useState('');
   const [waStatus,      setWaStatus]      = useState(null);  // 'pending' | 'completed' | null
   const [waPhoneId,     setWaPhoneId]     = useState('');
@@ -113,8 +129,9 @@ export default function SettingsPage() {
       setFullName(clinic.doctor_name  || '');
       setClinicName(clinic.name       || '');
       setSpecialty(clinic.specialty   || '');
-      setPrice(clinic.consultation_price != null ? String(clinic.consultation_price) : '');
+      setPrice(clinic.consultation_price ? String(clinic.consultation_price) : '');
       setAddress(clinic.address       || '');
+      setTreatedDiseases(clinic.treated_diseases || '');
       setMapLink(clinic.map_link      || '');
       setWaStatus(clinic.whatsapp_setup_status || 'pending');
       setWaPhoneId(clinic.whatsapp_phone_number_id || '');
@@ -150,6 +167,7 @@ export default function SettingsPage() {
           specialty,
           consultation_price: price ? parseInt(price, 10) : null,
           address:            address.trim(),
+          treated_diseases:   treatedDiseases.trim() || null,
           map_link:           mapLink.trim() || null,
         })
         .eq('auth_user_id', currentUser.id);
@@ -370,6 +388,19 @@ export default function SettingsPage() {
           </select>
         </Field>
 
+        <Field label="الأمراض التي يعالجها الطبيب (اختياري)">
+          <div 
+            onClick={() => setShowDiseasesModal(true)}
+            className={`${inputCls} cursor-pointer min-h-[48px] flex items-center bg-gray-50`}
+          >
+            {treatedDiseases ? (
+              <span className="text-gray-800 break-words">{treatedDiseases}</span>
+            ) : (
+              <span className="text-gray-400">انقر لإضافة الأمراض والحالات (السكري، ضغط الدم...)</span>
+            )}
+          </div>
+        </Field>
+
         <Field label="سعر الكشفية">
           <div className="relative">
             <input
@@ -417,6 +448,74 @@ export default function SettingsPage() {
       >
         {saving ? <><Spinner /> جاري الحفظ...</> : 'حفظ التعديلات'}
       </button>
+
+      {/* ── Modal for Diseases ────────────────────────────────────────────── */}
+      {showDiseasesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-xl">
+            {/* Header */}
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
+              <h3 className="text-lg font-bold text-gray-800">الأمراض والحالات المعالجة</h3>
+              <button 
+                onClick={() => setShowDiseasesModal(false)}
+                className="text-gray-400 hover:text-red-500 text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            
+            {/* Body */}
+            <div className="p-5 overflow-y-auto flex-1">
+              <p className="text-sm text-gray-500 mb-3">يمكنك كتابة الأمراض يدوياً هنا، أو اختيارها من القائمة بالأسفل:</p>
+              <textarea
+                value={treatedDiseases}
+                onChange={e => setTreatedDiseases(e.target.value)}
+                placeholder="اكتب الأمراض مفصولة بفارزة..."
+                className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 min-h-[100px] mb-6 resize-y"
+              />
+              
+              <h4 className="font-semibold text-gray-700 mb-3 text-sm">اقتراحات شائعة (اضغط للإضافة):</h4>
+              <div className="flex flex-wrap gap-2">
+                {DISEASE_SUGGESTIONS.map(disease => {
+                  const isAdded = treatedDiseases.includes(disease);
+                  return (
+                    <button
+                      key={disease}
+                      type="button"
+                      onClick={() => {
+                        if (!isAdded) {
+                          setTreatedDiseases(prev => {
+                            const trimmed = prev.trim();
+                            return trimmed ? `${trimmed}، ${disease}` : disease;
+                          });
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-sm rounded-full transition-all border ${
+                        isAdded 
+                          ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-default opacity-50' 
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-blue-300 shadow-sm'
+                      }`}
+                    >
+                      {disease} {isAdded ? '✓' : '+'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={() => setShowDiseasesModal(false)}
+                className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                تم الإختيار (حفظ)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@ const links = [
   { href: '/availability',  label: 'جدول الدوام', icon: '🗓️' },
   { href: '/patients',      label: 'المرضى',      icon: '👥' },
   { href: '/conversations', label: 'المحادثات',   icon: '💬' },
+  { href: '/faq',           label: 'الأسئلة الشائعة', icon: '❓' },
   { href: '/settings',      label: 'الإعدادات',   icon: '⚙️' },
 ];
 

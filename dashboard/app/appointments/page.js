@@ -48,6 +48,11 @@ export default function AppointmentsPage() {
   const [dateFilter,      setDateFilter]      = useState(() => new Date().toISOString().slice(0, 10));
   const [statusFilter,    setStatusFilter]    = useState('all');
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount]   = useState(0);
+  const PAGE_SIZE = 10;
+
   // Cancel modal state
   const [modal,         setModal]         = useState(null);   // { appointment }
   const [cancelReason,  setCancelReason]  = useState('ظرف طارئ');
@@ -69,7 +74,7 @@ export default function AppointmentsPage() {
     setLoading(true);
     let query = supabase
       .from('appointments')
-      .select('id, scheduled_at, queue_number, status, reason, patient_name, served_by, created_at, patients(phone_number, no_show_count)')
+      .select('id, scheduled_at, queue_number, status, reason, patient_name, served_by, created_at, patients(phone_number, no_show_count)', { count: 'exact' })
       .eq('clinic_id', clinicId)
       .order('scheduled_at', { ascending: true })
       .order('queue_number', { ascending: true });
@@ -81,12 +86,25 @@ export default function AppointmentsPage() {
     }
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
 
-    const { data, error } = await query;
-    if (!error) setAppointments(data || []);
+    // Apply Pagination
+    const from = (currentPage - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    query = query.range(from, to);
+
+    const { data, count, error } = await query;
+    if (!error) {
+      setAppointments(data || []);
+      setTotalCount(count || 0);
+    }
     setLoading(false);
-  }, [clinicId, dateFilter, statusFilter]);
+  }, [clinicId, dateFilter, statusFilter, currentPage]);
 
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateFilter, statusFilter]);
 
   // Realtime
   useEffect(() => {
@@ -445,10 +463,61 @@ export default function AppointmentsPage() {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">
-              {appointments.length} موعد
-            </div>
           </div>
+
+
+          {/* ── Pagination UI ────────────────────────────────────────────── */}
+          {totalCount > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between bg-white px-4 py-3 border border-gray-200 rounded-2xl shadow-sm gap-4">
+              <span className="text-sm text-gray-700">
+                عرض <span className="font-semibold">{(currentPage - 1) * PAGE_SIZE + 1}</span> إلى <span className="font-semibold">{Math.min(currentPage * PAGE_SIZE, totalCount)}</span> من أصل <span className="font-semibold">{totalCount}</span> موعد
+              </span>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  السابق
+                </button>
+                
+                <div className="flex gap-1">
+                  {Array.from({ length: Math.ceil(totalCount / PAGE_SIZE) }, (_, i) => i + 1)
+                    // Show only a sliding window of 5 pages max to not clutter the UI
+                    .filter(page => page === 1 || page === Math.ceil(totalCount / PAGE_SIZE) || Math.abs(page - currentPage) <= 1)
+                    .map((page, index, array) => {
+                      if (index > 0 && page - array[index - 1] > 1) {
+                        return (
+                          <span key={`dots-${page}`} className="px-2 py-1 text-gray-500">...</span>
+                        );
+                      }
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                            currentPage === page
+                              ? 'bg-blue-600 text-white'
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    })}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(totalCount / PAGE_SIZE), p + 1))}
+                  disabled={currentPage >= Math.ceil(totalCount / PAGE_SIZE)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  التالي
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
