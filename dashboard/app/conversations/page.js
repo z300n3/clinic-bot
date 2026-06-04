@@ -38,6 +38,8 @@ function ConversationsContent() {
   const [patients,  setPatients] = useState([]);
   const [selected,  setSelected] = useState(searchParams.get('phone') || null);
   const [messages,  setMessages] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [convState, setConvState] = useState(null);   // conversation_state row
   const [loadingP,  setLoadingP] = useState(true);
   const [loadingM,  setLoadingM] = useState(false);
@@ -46,6 +48,7 @@ function ConversationsContent() {
   const [draftMsg,  setDraftMsg] = useState('');
   const [sending,   setSending]  = useState(false);
   const messagesEndRef           = useRef(null);
+  const messagesContainerRef     = useRef(null);
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
@@ -57,17 +60,17 @@ function ConversationsContent() {
     if (!clinicId) return;
     setLoadingP(true);
     const { data } = await supabase
-      .from('conversations')
-      .select('patient_phone, created_at')
+      .from('patients')
+      .select('phone_number, name, last_seen_at')
       .eq('clinic_id', clinicId)
-      .order('created_at', { ascending: false });
+      .order('last_seen_at', { ascending: false });
 
     if (data) {
-      const map = new Map();
-      for (const row of data) {
-        if (!map.has(row.patient_phone)) map.set(row.patient_phone, row.created_at);
-      }
-      setPatients([...map.entries()].map(([phone, ts]) => ({ phone, ts })));
+      setPatients(data.map(p => ({
+        phone: p.phone_number,
+        name: p.name,
+        ts: p.last_seen_at
+      })));
     }
     setLoadingP(false);
   }, [clinicId]);
@@ -78,6 +81,7 @@ function ConversationsContent() {
   const loadMessages = useCallback(async (phone) => {
     if (!phone || !clinicId) return;
     setLoadingM(true);
+    setHasMore(false);
 
     const [msgRes, stateRes] = await Promise.all([
       supabase
@@ -85,7 +89,8 @@ function ConversationsContent() {
         .select('id, role, content, tool_calls, created_at, message_type, media_url')
         .eq('clinic_id', clinicId)
         .eq('patient_phone', phone)
-        .order('created_at', { ascending: true }),
+        .order('created_at', { ascending: false })
+        .limit(30),
       supabase
         .from('conversation_state')
         .select('state, state_data, last_message_at')
@@ -94,10 +99,46 @@ function ConversationsContent() {
         .maybeSingle(),
     ]);
 
-    setMessages(msgRes.data || []);
+    if (msgRes.data) {
+      setHasMore(msgRes.data.length === 30);
+      setMessages(msgRes.data.reverse());
+    } else {
+      setMessages([]);
+    }
     setConvState(stateRes.data || null);
     setLoadingM(false);
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
   }, [clinicId]);
+
+  const loadMoreMessages = async () => {
+    if (loadingMore || !hasMore || messages.length === 0 || !selected || !clinicId) return;
+    setLoadingMore(true);
+    
+    const container = messagesContainerRef.current;
+    const oldScrollHeight = container ? container.scrollHeight : 0;
+    const oldestMsg = messages[0];
+
+    const { data } = await supabase
+      .from('conversations')
+      .select('id, role, content, tool_calls, created_at, message_type, media_url')
+      .eq('clinic_id', clinicId)
+      .eq('patient_phone', selected)
+      .lt('created_at', oldestMsg.created_at)
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (data) {
+      setHasMore(data.length === 30);
+      setMessages(prev => [...data.reverse(), ...prev]);
+      
+      setTimeout(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight - oldScrollHeight;
+        }
+      }, 0);
+    }
+    setLoadingMore(false);
+  };
 
   useEffect(() => {
     if (selected) loadMessages(selected);
@@ -114,7 +155,6 @@ function ConversationsContent() {
         (payload) => {
           if (payload.new.patient_phone !== selected) return;
           setMessages((prev) => {
-            // Replace the optimistic temp entry if it exists (same content, doctor role)
             if (payload.new.role === 'doctor') {
               const idx = prev.findIndex(
                 (m) => typeof m.id === 'string' && m.id.startsWith('temp-') && m.content === payload.new.content
@@ -127,16 +167,12 @@ function ConversationsContent() {
             }
             return [...prev, payload.new];
           });
+          setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         }
       )
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, [selected, clinicId]);
-
-  // ── Auto-scroll to bottom when messages change ────────────────────────────
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   // ── Reset conversation state to 'active' ──────────────────────────────────
   async function handleReset() {
@@ -177,6 +213,7 @@ function ConversationsContent() {
     }]);
     setDraftMsg('');
     setSending(true);
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
 
     try {
       const res  = await fetch(`${BACKEND_URL}/api/messages/send`, {
@@ -260,16 +297,19 @@ function ConversationsContent() {
           ) : patients.length === 0 ? (
             <div className="text-center py-8 text-gray-400 text-sm">لا توجد محادثات</div>
           ) : (
-            patients.map(({ phone, ts }) => (
+            patients.map(({ phone, name, ts }) => (
               <button
                 key={phone}
                 onClick={() => setSelected(phone)}
-                className={`w-full text-right px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors min-h-[44px] ${
+                className={`w-full text-right px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors min-h-[44px] flex flex-col gap-0.5 ${
                   selected === phone ? 'bg-blue-50 border-r-2 border-r-blue-500' : ''
                 }`}
               >
-                <p className="font-mono text-xs text-gray-800 break-all">{phone}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{fmtTime(ts)}</p>
+                <div className="flex justify-between items-baseline w-full gap-2">
+                  <p className="font-semibold text-sm text-gray-800 truncate">{name || 'بدون اسم'}</p>
+                  <p className="text-xs text-gray-400 flex-shrink-0">{fmtTime(ts)}</p>
+                </div>
+                <p className="font-mono text-xs text-gray-500 w-full text-right" dir="ltr">{phone}</p>
               </button>
             ))
           )}
@@ -357,13 +397,22 @@ function ConversationsContent() {
               )}
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div 
+                ref={messagesContainerRef}
+                onScroll={(e) => {
+                  if (e.target.scrollTop === 0) loadMoreMessages();
+                }}
+                className="flex-1 overflow-y-auto p-4 space-y-3"
+              >
                 {loadingM ? (
                   <div className="text-center py-8 text-gray-400">جاري التحميل...</div>
                 ) : messages.length === 0 ? (
                   <div className="text-center py-8 text-gray-400">لا توجد رسائل</div>
                 ) : (
-                  messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+                  <>
+                    {loadingMore && <div className="text-center text-xs text-gray-400 py-2">جاري تحميل الرسائل السابقة...</div>}
+                    {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)}
+                  </>
                 )}
                 {/* Scroll anchor */}
                 <div ref={messagesEndRef} />
