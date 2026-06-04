@@ -53,7 +53,7 @@ export function RealtimeProvider({ children }) {
       .from('conversation_state')
       .select('patient_phone')
       .eq('clinic_id', clinicId)
-      .eq('state', 'awaiting_human');
+      .eq('state', 'doctor_pending');
 
     if (data && mountedRef.current) {
       setAwaitingPhones(data.map((r) => r.patient_phone));
@@ -115,19 +115,19 @@ export function RealtimeProvider({ children }) {
           const row = payload.new;
           if (!row || !row.patient_phone) return;
 
-          if (row.state === 'awaiting_human') {
+          if (row.state === 'doctor_pending') {
             // Add to awaiting list (avoid duplicates)
             setAwaitingPhones((prev) =>
               prev.includes(row.patient_phone) ? prev : [...prev, row.patient_phone]
             );
 
-            toast.error('🚨 طلب تدخل بشري', {
-              description: `المريض ${row.patient_phone} يحتاج مساعدة`,
+            toast.error('👨‍⚕️ طلب استشارة طبيب', {
+              description: `المريض ${row.patient_phone} يحتاج رأي الطبيب`,
               duration:    8000,
               position:    'top-center',
             });
           } else {
-            // Remove from awaiting list (state changed away from awaiting_human)
+            // Remove from awaiting list (state changed away from doctor_pending)
             setAwaitingPhones((prev) =>
               prev.filter((p) => p !== row.patient_phone)
             );

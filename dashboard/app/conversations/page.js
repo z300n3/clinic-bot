@@ -11,7 +11,9 @@ const ROLE_LABELS = { user: 'مريض', assistant: 'الذكاء الاصطنا�
 
 const STATE_LABELS = {
   active:          { label: 'نشط',            color: 'bg-green-100 text-green-700'  },
-  awaiting_human:  { label: 'ينتظر موظف',    color: 'bg-orange-100 text-orange-700' },
+  gate_collecting: { label: 'جمع معلومات',    color: 'bg-blue-100 text-blue-700' },
+  doctor_pending:  { label: 'بانتظار الطبيب',  color: 'bg-orange-100 text-orange-700' },
+  doctor_active:   { label: 'الطبيب يرد',     color: 'bg-purple-100 text-purple-700' },
   resolved:        { label: 'محلول',          color: 'bg-gray-100 text-gray-500'    },
 };
 
@@ -80,7 +82,7 @@ function ConversationsContent() {
     const [msgRes, stateRes] = await Promise.all([
       supabase
         .from('conversations')
-        .select('id, role, content, tool_calls, created_at, message_type')
+        .select('id, role, content, tool_calls, created_at, message_type, media_url')
         .eq('clinic_id', clinicId)
         .eq('patient_phone', phone)
         .order('created_at', { ascending: true }),
@@ -310,14 +312,14 @@ function ConversationsContent() {
                   )}
                 </div>
 
-                {/* Reset button — shown when state is awaiting_human */}
-                {convState?.state === 'awaiting_human' && (
+                {/* Reset button — shown when state is doctor_pending or doctor_active */}
+                {(convState?.state === 'doctor_pending' || convState?.state === 'doctor_active' || convState?.state === 'awaiting_human') && (
                   <button
                     onClick={handleReset}
                     disabled={resetting}
                     className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 min-h-[44px]"
                   >
-                    {resetting ? '...' : '🔄 إعادة تشغيل البوت'}
+                    {resetting ? '...' : '🔄 إنهاء تدخل الطبيب'}
                   </button>
                 )}
 
@@ -333,17 +335,22 @@ function ConversationsContent() {
                 )}
               </div>
 
-              {/* Awaiting-human banner */}
-              {convState?.state === 'awaiting_human' && (
+              {/* Awaiting-human / Doctor Pending banner */}
+              {['awaiting_human', 'doctor_pending', 'doctor_active'].includes(convState?.state) && (
                 <div className="mx-4 mt-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm text-orange-700 flex items-start gap-2">
-                  <span className="text-lg leading-none mt-0.5">⚠️</span>
-                  <div>
-                    <p className="font-semibold">البوت متوقف — المحادثة بانتظار موظف بشري</p>
-                    {convState.state_data?.reason && (
-                      <p className="text-xs mt-0.5 text-orange-600">السبب: {convState.state_data.reason}</p>
+                  <span className="text-lg leading-none mt-0.5">👨‍⚕️</span>
+                  <div className="flex-1">
+                    <p className="font-semibold">المحادثة بانتظار تدخل الطبيب</p>
+                    
+                    {/* Patient Summary Banner from State Data */}
+                    {convState?.state_data?.escalation?.summary && (
+                      <div className="mt-2 p-2 bg-white/60 rounded border border-orange-100 text-orange-800 whitespace-pre-wrap">
+                        {convState.state_data.escalation.summary}
+                      </div>
                     )}
-                    <p className="text-xs mt-1 text-orange-500">
-                      اضغط "إعادة تشغيل البوت" بعد الانتهاء من مساعدة المريض
+                    
+                    <p className="text-xs mt-2 text-orange-500">
+                      اضغط "إنهاء تدخل الطبيب" بعد الانتهاء للعودة للوضع الآلي
                     </p>
                   </div>
                 </div>
@@ -363,38 +370,69 @@ function ConversationsContent() {
               </div>
 
               {/* ── Doctor message input ──────────────────────────────────── */}
-              <div className="border-t border-gray-100 p-3 flex gap-2 items-end">
-                <input
-                  type="text"
-                  value={draftMsg}
-                  onChange={(e) => setDraftMsg(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-                  }}
-                  placeholder="اكتب رسالة..."
-                  disabled={sending}
-                  dir="rtl"
-                  className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 min-h-[44px]"
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!draftMsg.trim() || sending}
-                  aria-label="إرسال"
-                  className="flex-shrink-0 flex items-center justify-center w-11 h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {sending ? (
-                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="22" y1="2" x2="11" y2="13"/>
-                      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                    </svg>
-                  )}
-                </button>
-              </div>
+              {(() => {
+                const lastMsg = convState?.last_message_at ? new Date(convState.last_message_at) : null;
+                const hoursSince = lastMsg ? (Date.now() - lastMsg.getTime()) / (1000 * 60 * 60) : Infinity;
+                const windowExpired = hoursSince > 24;
+                const hoursLeft = Math.max(0, 24 - Math.floor(hoursSince));
+
+                return (
+                  <div className="border-t border-gray-100 p-3 flex flex-col gap-2">
+                    {/* 24h Indicator */}
+                    <div className="flex items-center gap-2 px-1">
+                      {windowExpired ? (
+                        <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-red-600"></span>
+                          انتهت مدة الرد (أكثر من 24 ساعة)
+                        </span>
+                      ) : hoursLeft <= 2 ? (
+                        <span className="text-xs font-semibold text-orange-600 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+                          متبقي {hoursLeft} ساعة للرد
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold text-green-600 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                          متبقي {hoursLeft} ساعة
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 items-end">
+                      <input
+                        type="text"
+                        value={draftMsg}
+                        onChange={(e) => setDraftMsg(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey && !windowExpired) { e.preventDefault(); handleSend(); }
+                        }}
+                        placeholder={windowExpired ? "لا يمكن الإرسال، انتهت المدة المسموحة" : "اكتب رسالة..."}
+                        disabled={sending || windowExpired}
+                        dir="rtl"
+                        className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 min-h-[44px]"
+                      />
+                      <button
+                        onClick={handleSend}
+                        disabled={!draftMsg.trim() || sending || windowExpired}
+                        aria-label="إرسال"
+                        className="flex-shrink-0 flex items-center justify-center w-11 h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {sending ? (
+                          <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
@@ -446,8 +484,16 @@ function MessageBubble({ msg }) {
           {ROLE_LABELS[msg.role] || msg.role} · {fmtTime(msg.created_at)}
         </p>
         <div className={`px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${bubbleClass}`}>
+          {msg.message_type === 'image' && msg.media_url && (
+            <img src={msg.media_url} alt="مرفق" className="max-w-xs rounded-lg mb-2 object-cover cursor-pointer" />
+          )}
+          {msg.message_type === 'image' && !msg.media_url && (
+            <div className="max-w-xs h-32 bg-gray-200 rounded-lg mb-2 flex items-center justify-center text-gray-500">
+              الصورة لم تعد متاحة
+            </div>
+          )}
           {isVoice && <span className="mr-1">🎤</span>}
-          {msg.content || <span className="opacity-50 italic">[فارغ]</span>}
+          {msg.content || (msg.message_type === 'image' ? '' : <span className="opacity-50 italic">[فارغ]</span>)}
           {isVoice && (
             <p className="text-xs mt-1 opacity-50">رسالة صوتية</p>
           )}
