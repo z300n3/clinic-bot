@@ -11,8 +11,8 @@ const DEFAULT_WEEKLY = Array.from({ length: 7 }, (_, i) => ({
   day_of_week:    i,
   is_working_day: i !== 5,   // Friday off by default
   daily_capacity: null,      // null = unlimited / open (الخيار الطبيعي)
-  start_time:     '09:00',   // لحساب وقت الدور التقريبي
-  end_time:       '17:00',
+  start_time:     '14:00',   // لحساب وقت الدور التقريبي
+  end_time:       '21:00',
 }));
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
