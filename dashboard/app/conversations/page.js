@@ -101,7 +101,17 @@ function ConversationsContent() {
 
     if (msgRes.data) {
       setHasMore(msgRes.data.length === 30);
-      setMessages(msgRes.data.reverse());
+      setMessages(() => {
+        const uniqueMessages = [];
+        const seen = new Set();
+        for (const msg of msgRes.data.reverse()) {
+          if (!seen.has(msg.id)) {
+            seen.add(msg.id);
+            uniqueMessages.push(msg);
+          }
+        }
+        return uniqueMessages;
+      });
     } else {
       setMessages([]);
     }
@@ -129,7 +139,18 @@ function ConversationsContent() {
 
     if (data) {
       setHasMore(data.length === 30);
-      setMessages(prev => [...data.reverse(), ...prev]);
+      setMessages(prev => {
+        const combined = [...data.reverse(), ...prev];
+        const uniqueMessages = [];
+        const seen = new Set();
+        for (const msg of combined) {
+          if (!seen.has(msg.id)) {
+            seen.add(msg.id);
+            uniqueMessages.push(msg);
+          }
+        }
+        return uniqueMessages;
+      });
       
       setTimeout(() => {
         if (container) {
