@@ -21,8 +21,8 @@ const TOASTER_PROPS = {
 export default function ConditionalLayout({ children }) {
   const pathname = usePathname();
 
-  // Auth pages: no sidebar, no realtime provider
-  if (AUTH_PATHS.has(pathname)) {
+  // Auth pages and Patient Landing pages: no sidebar, no realtime provider
+  if (AUTH_PATHS.has(pathname) || pathname.startsWith('/c/')) {
     return <>{children}</>;
   }
 

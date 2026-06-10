@@ -30,9 +30,10 @@ export async function middleware(req) {
 
   const { pathname } = req.nextUrl;
   const isAuthPage = AUTH_PAGES.has(pathname);
+  const isPatientPage = pathname.startsWith('/c/');
 
-  // Not logged in → redirect to /login (except on auth pages)
-  if (!user && !isAuthPage) {
+  // Not logged in → redirect to /login (except on auth pages and patient pages)
+  if (!user && !isAuthPage && !isPatientPage) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
