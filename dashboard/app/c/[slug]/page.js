@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { notFound } from 'next/navigation';
 
-export default function ClinicLandingPage({ params }) {
+export default function ClinicLandingPage(props) {
+  const params = use(props.params);
   const { slug } = params;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,7 +19,8 @@ export default function ClinicLandingPage({ params }) {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch(`http://localhost:3000/api/clinics/${slug}`);
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+        const res = await fetch(`${backendUrl}/api/clinics/${slug}`);
         if (!res.ok) {
           if (res.status === 404) return notFound();
           throw new Error('فشل في جلب البيانات');
@@ -39,7 +41,8 @@ export default function ClinicLandingPage({ params }) {
     setBookingStatus('loading');
     
     try {
-      const res = await fetch(`http://localhost:3000/api/appointments/web`, {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+      const res = await fetch(`${backendUrl}/api/appointments/web`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
