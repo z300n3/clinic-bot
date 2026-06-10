@@ -3,6 +3,8 @@
 import { useState, useEffect, use } from 'react';
 import { notFound } from 'next/navigation';
 
+const DAYS_MAP = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
 export default function ClinicLandingPage(props) {
   const params = use(props.params);
   const { slug } = params;
@@ -13,8 +15,13 @@ export default function ClinicLandingPage(props) {
   // Form State
   const [patientName, setPatientName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [scheduledAt, setScheduledAt] = useState('');
+  const [scheduledAt, setScheduledAt] = useState(''); // Now stores YYYY-MM-DD
   const [bookingStatus, setBookingStatus] = useState('idle'); // idle, loading, success, error
+
+  // UI State
+  const [showDiseases, setShowDiseases] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(true);
+  const [theme, setTheme] = useState('dark'); // 'dark', 'light', 'eyecare'
 
   useEffect(() => {
     async function fetchData() {
@@ -41,6 +48,9 @@ export default function ClinicLandingPage(props) {
     setBookingStatus('loading');
     
     try {
+      // Append a generic time or let backend handle it, since input is date-only
+      const isoDate = new Date(scheduledAt).toISOString();
+
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
       const res = await fetch(`${backendUrl}/api/appointments/web`, {
         method: 'POST',
@@ -49,7 +59,7 @@ export default function ClinicLandingPage(props) {
           clinic_id: data.clinic.id,
           patient_name: patientName,
           phone_number: phoneNumber,
-          scheduled_at: new Date(scheduledAt).toISOString(),
+          scheduled_at: isoDate,
         })
       });
 
@@ -63,6 +73,12 @@ export default function ClinicLandingPage(props) {
       console.error(err);
       setBookingStatus('error');
     }
+  };
+
+  const cycleTheme = () => {
+    if (theme === 'dark') setTheme('light');
+    else if (theme === 'light') setTheme('eyecare');
+    else setTheme('dark');
   };
 
   if (loading) {
@@ -81,73 +97,191 @@ export default function ClinicLandingPage(props) {
     );
   }
 
-  const { clinic, faqs } = data;
+  const { clinic, faqs, schedules, blocked_periods } = data;
   const diseases = clinic.treated_diseases ? clinic.treated_diseases.split('،').map(d => d.trim()) : [];
 
+  // Determine theme classes
+  let themeClasses = '';
+  let glassClasses = '';
+  
+  if (theme === 'dark') {
+    themeClasses = 'dark bg-slate-950 text-slate-200';
+    glassClasses = 'bg-slate-900/60 border-slate-700/50 text-slate-200';
+  } else if (theme === 'eyecare') {
+    themeClasses = 'bg-[#fdf6e3] text-[#655b53] sepia-[.2] contrast-100'; // Warm tone
+    glassClasses = 'bg-[#fffbf0]/80 border-[#d4cbb3] text-[#5b5149] shadow-md';
+  } else {
+    themeClasses = 'bg-slate-50 text-slate-800';
+    glassClasses = 'bg-white/60 border-white/40 text-slate-800 shadow-xl';
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 relative overflow-hidden text-slate-800 dark:text-slate-200 font-sans" dir="rtl">
-      {/* Decorative Blobs for Glassmorphism Background */}
-      <div className="absolute top-[-10%] left-[-10%] w-[30rem] h-[30rem] bg-blue-400/20 dark:bg-blue-600/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[100px] animate-pulse"></div>
-      <div className="absolute top-[20%] right-[-10%] w-[30rem] h-[30rem] bg-teal-400/20 dark:bg-teal-600/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[100px] animate-pulse" style={{ animationDelay: '2s' }}></div>
-      <div className="absolute bottom-[-20%] left-[20%] w-[30rem] h-[30rem] bg-indigo-400/20 dark:bg-indigo-600/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[100px] animate-pulse" style={{ animationDelay: '4s' }}></div>
+    <div className={`min-h-screen relative overflow-hidden font-sans transition-colors duration-500 ${themeClasses}`} dir="rtl">
+      
+      {/* Decorative Blobs */}
+      {theme === 'dark' && (
+        <>
+          <div className="absolute top-[-10%] left-[-10%] w-[30rem] h-[30rem] bg-blue-600/20 rounded-full mix-blend-screen filter blur-[100px] animate-pulse"></div>
+          <div className="absolute top-[20%] right-[-10%] w-[30rem] h-[30rem] bg-teal-600/20 rounded-full mix-blend-screen filter blur-[100px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+          <div className="absolute bottom-[-20%] left-[20%] w-[30rem] h-[30rem] bg-indigo-600/20 rounded-full mix-blend-screen filter blur-[100px] animate-pulse" style={{ animationDelay: '4s' }}></div>
+        </>
+      )}
+      {theme === 'light' && (
+        <>
+          <div className="absolute top-[-10%] left-[-10%] w-[30rem] h-[30rem] bg-blue-400/20 rounded-full mix-blend-multiply filter blur-[100px] animate-pulse"></div>
+          <div className="absolute top-[20%] right-[-10%] w-[30rem] h-[30rem] bg-teal-400/20 rounded-full mix-blend-multiply filter blur-[100px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+          <div className="absolute bottom-[-20%] left-[20%] w-[30rem] h-[30rem] bg-indigo-400/20 rounded-full mix-blend-multiply filter blur-[100px] animate-pulse" style={{ animationDelay: '4s' }}></div>
+        </>
+      )}
+
+      {/* Theme Toggler Button */}
+      <button 
+        onClick={cycleTheme}
+        className={`fixed top-4 left-4 z-50 p-3 rounded-full backdrop-blur-md transition-transform hover:scale-110 ${glassClasses}`}
+        title="تغيير المظهر"
+      >
+        {theme === 'dark' && <span className="text-2xl leading-none">🌙</span>}
+        {theme === 'light' && <span className="text-2xl leading-none">☀️</span>}
+        {theme === 'eyecare' && <span className="text-2xl leading-none">👁️</span>}
+      </button>
 
       <main className="relative z-10 max-w-4xl mx-auto px-4 py-12 flex flex-col gap-8">
         
         {/* Header / Hero Section (Glass Card) */}
-        <header className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-white/40 dark:border-slate-700/50 rounded-3xl p-8 shadow-xl text-center transition-all hover:bg-white/70 dark:hover:bg-slate-900/70">
+        <header className={`backdrop-blur-xl border rounded-3xl p-8 text-center transition-all ${glassClasses}`}>
           <h1 className="text-4xl md:text-5xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-l from-blue-600 to-teal-500">
             {clinic.name}
           </h1>
-          <h2 className="text-2xl font-semibold mb-2 text-slate-700 dark:text-slate-300">
+          <h2 className="text-2xl font-semibold mb-2">
             {clinic.doctor_name}
           </h2>
-          <p className="text-lg text-slate-600 dark:text-slate-400 mb-6 font-medium">
+          <p className="text-lg mb-6 font-medium opacity-80">
             أخصائي {clinic.specialty}
           </p>
           <div className="flex flex-wrap justify-center gap-4 text-sm font-medium">
-            <span className="px-4 py-2 bg-blue-100/50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full backdrop-blur-sm">
+            <span className="px-4 py-2 bg-black/5 rounded-full backdrop-blur-sm border border-black/10">
               📍 {clinic.address}
             </span>
             {clinic.consultation_price && (
-              <span className="px-4 py-2 bg-teal-100/50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 rounded-full backdrop-blur-sm">
+              <span className="px-4 py-2 bg-black/5 rounded-full backdrop-blur-sm border border-black/10">
                 💵 سعر الكشفية: {clinic.consultation_price} د.ع
               </span>
             )}
           </div>
         </header>
 
+        {/* Schedule & Blocked Periods Section */}
+        <section className={`backdrop-blur-lg border rounded-3xl p-6 md:p-8 ${glassClasses}`}>
+            <button 
+              onClick={() => setShowSchedule(!showSchedule)}
+              className="w-full flex items-center justify-between text-2xl font-bold focus:outline-none transition-opacity hover:opacity-80"
+            >
+              <div className="flex items-center gap-2">
+                <span>📅</span> جدول الدوام
+              </div>
+              <svg 
+                className={`w-6 h-6 transition-transform duration-300 ${showSchedule ? 'rotate-180' : ''}`} 
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {showSchedule && (
+              <div className="mt-6 flex flex-col gap-4">
+                {/* Working Days */}
+                {schedules && schedules.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {schedules.map((sched, idx) => (
+                      <div key={idx} className="p-4 bg-black/5 rounded-2xl border border-black/5 flex justify-between items-center">
+                        <span className="font-bold text-lg">
+                          {sched.day_of_week !== null ? DAYS_MAP[sched.day_of_week] : sched.specific_date}
+                        </span>
+                        <div className="flex flex-col text-sm opacity-90 text-left" dir="ltr">
+                          {sched.is_working_day && sched.shifts && sched.shifts.length > 0 ? (
+                            sched.shifts.map((shift, sIdx) => (
+                              <span key={sIdx}>{shift.open} - {shift.close}</span>
+                            ))
+                          ) : (
+                            <span className="text-red-500 font-bold">مغلق</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="opacity-80">لم يتم تحديد أوقات الدوام بعد.</p>
+                )}
+
+                {/* Substitute Doctors / Blocked Periods */}
+                {blocked_periods && blocked_periods.length > 0 && (
+                  <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
+                    <h4 className="font-bold text-amber-700 dark:text-amber-400 mb-2">⚠️ تنبيهات هامة:</h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm">
+                      {blocked_periods.map((bp, idx) => {
+                        const startDate = new Date(bp.start_at).toLocaleDateString('ar-IQ');
+                        return (
+                          <li key={idx} className="opacity-90">
+                            في يوم <span className="font-bold">{startDate}</span>: 
+                            {bp.substitute_doctor_name 
+                              ? ` سيتواجد الطبيب البديل (${bp.substitute_doctor_name}) لتقديم الرعاية الطبية.` 
+                              : ` العيادة مغلقة (${bp.reason || 'إجازة'}).`}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+        </section>
+
         {/* Treated Diseases Section */}
         {diseases.length > 0 && (
-          <section className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-lg border border-white/30 dark:border-slate-700/50 rounded-3xl p-8 shadow-lg">
-            <h3 className="text-2xl font-bold mb-6 text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <span>🩺</span> الحالات التي نعالجها
-            </h3>
-            <div className="flex flex-wrap gap-3">
-              {diseases.map((disease, idx) => (
-                <span key={idx} className="px-4 py-2 bg-white/60 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 shadow-sm hover:scale-105 transition-transform cursor-default">
-                  {disease}
-                </span>
-              ))}
-            </div>
+          <section className={`backdrop-blur-lg border rounded-3xl p-6 md:p-8 ${glassClasses}`}>
+            <button 
+              onClick={() => setShowDiseases(!showDiseases)}
+              className="w-full flex items-center justify-between text-2xl font-bold focus:outline-none transition-opacity hover:opacity-80"
+            >
+              <div className="flex items-center gap-2">
+                <span>🩺</span> الحالات التي نعالجها
+              </div>
+              <svg 
+                className={`w-6 h-6 transition-transform duration-300 ${showDiseases ? 'rotate-180' : ''}`} 
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {showDiseases && (
+              <div className="flex flex-wrap gap-3 mt-6">
+                {diseases.map((disease, idx) => (
+                  <span key={idx} className="px-4 py-2 bg-black/5 border border-black/10 rounded-xl shadow-sm hover:scale-105 transition-transform cursor-default">
+                    {disease}
+                  </span>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
         {/* Booking Form Section */}
-        <section className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-lg border border-white/30 dark:border-slate-700/50 rounded-3xl p-8 shadow-lg relative overflow-hidden">
+        <section className={`backdrop-blur-lg border rounded-3xl p-8 relative overflow-hidden ${glassClasses}`}>
           <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full filter blur-2xl"></div>
           
-          <h3 className="text-2xl font-bold mb-2 text-slate-800 dark:text-slate-100 relative z-10">
+          <h3 className="text-2xl font-bold mb-2 relative z-10">
             احجز موعدك الآن 📅
           </h3>
-          <p className="text-slate-600 dark:text-slate-400 mb-6 relative z-10">
+          <p className="opacity-80 mb-6 relative z-10">
             أدخل بياناتك وسنقوم بتأكيد موعدك مباشرة عبر الواتساب.
           </p>
 
           {bookingStatus === 'success' ? (
-            <div className="p-6 bg-green-100/50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-2xl text-center backdrop-blur-md relative z-10">
+            <div className="p-6 bg-green-500/10 border border-green-500/30 rounded-2xl text-center relative z-10">
               <span className="text-4xl mb-2 block">✅</span>
-              <h4 className="text-xl font-bold text-green-800 dark:text-green-300 mb-2">تم استلام طلبك بنجاح!</h4>
-              <p className="text-green-700 dark:text-green-400">ستصلك رسالة تأكيد على واتساب قريباً.</p>
+              <h4 className="text-xl font-bold text-green-700 dark:text-green-400 mb-2">تم استلام طلبك بنجاح!</h4>
+              <p className="opacity-90">ستصلك رسالة تأكيد على واتساب قريباً.</p>
               <button onClick={() => setBookingStatus('idle')} className="mt-4 px-6 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors">
                 حجز موعد آخر
               </button>
@@ -156,24 +290,24 @@ export default function ClinicLandingPage(props) {
             <form onSubmit={handleBooking} className="flex flex-col gap-5 relative z-10">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="flex flex-col gap-2">
-                  <label className="font-semibold text-slate-700 dark:text-slate-300">الاسم الكامل</label>
+                  <label className="font-semibold opacity-90">الاسم الكامل</label>
                   <input 
                     type="text" 
                     required 
                     value={patientName}
                     onChange={(e) => setPatientName(e.target.value)}
-                    className="p-3 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-all"
+                    className="p-3 rounded-xl bg-black/5 border border-black/10 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-all"
                     placeholder="مثال: أحمد محمد"
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="font-semibold text-slate-700 dark:text-slate-300">رقم الواتساب</label>
+                  <label className="font-semibold opacity-90">رقم الواتساب</label>
                   <input 
                     type="tel" 
                     required 
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="p-3 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-all text-left"
+                    className="p-3 rounded-xl bg-black/5 border border-black/10 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-all text-left"
                     placeholder="+964..."
                     dir="ltr"
                   />
@@ -181,13 +315,13 @@ export default function ClinicLandingPage(props) {
               </div>
               
               <div className="flex flex-col gap-2">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">اختر التاريخ والوقت</label>
+                <label className="font-semibold opacity-90">اختر التاريخ (اليوم)</label>
                 <input 
-                  type="datetime-local" 
+                  type="date" 
                   required 
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
-                  className="p-3 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-all"
+                  className="p-3 rounded-xl bg-black/5 border border-black/10 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-all"
                 />
               </div>
 
@@ -206,17 +340,32 @@ export default function ClinicLandingPage(props) {
           )}
         </section>
 
+        {/* Social Media / Contact Section */}
+        <section className={`backdrop-blur-lg border rounded-3xl p-8 text-center ${glassClasses}`}>
+            <h3 className="text-2xl font-bold mb-4">تواصل معنا 💬</h3>
+            <p className="opacity-80 mb-6">يمكنك الاستفسار أو تأكيد الحجز بالتواصل المباشر مع العيادة عبر واتساب.</p>
+            <a 
+              href="https://wa.me/964" // Put real phone number logic here if available
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-3 bg-[#25D366] hover:bg-[#20bd5a] text-white px-8 py-4 rounded-2xl font-bold text-lg transition-transform hover:scale-105 shadow-lg"
+            >
+              <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.82 9.82 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.88 11.88 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.82 11.82 0 0 0-3.48-8.413Z"/></svg>
+              تواصل عبر واتساب
+            </a>
+        </section>
+
         {/* FAQs Section */}
         {faqs && faqs.length > 0 && (
-          <section className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-lg border border-white/30 dark:border-slate-700/50 rounded-3xl p-8 shadow-lg">
-            <h3 className="text-2xl font-bold mb-6 text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <section className={`backdrop-blur-lg border rounded-3xl p-6 md:p-8 ${glassClasses}`}>
+            <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
               <span>❓</span> الأسئلة الشائعة
             </h3>
             <div className="flex flex-col gap-4">
               {faqs.map((faq, idx) => (
-                <div key={idx} className="p-4 bg-white/60 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 rounded-2xl">
-                  <h4 className="font-bold text-lg text-slate-800 dark:text-slate-200 mb-2">{faq.question}</h4>
-                  <p className="text-slate-600 dark:text-slate-400">{faq.answer}</p>
+                <div key={idx} className="p-4 bg-black/5 border border-black/10 rounded-2xl">
+                  <h4 className="font-bold text-lg mb-2">{faq.question}</h4>
+                  <p className="opacity-90">{faq.answer}</p>
                 </div>
               ))}
             </div>
