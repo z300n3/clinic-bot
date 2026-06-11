@@ -5,6 +5,15 @@ import { notFound } from 'next/navigation';
 
 const DAYS_MAP = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
+const formatTime12Hour = (time24) => {
+  if (!time24) return '';
+  const [hours, minutes] = time24.split(':');
+  let h = parseInt(hours, 10);
+  const ampm = h >= 12 ? 'م' : 'ص';
+  h = h % 12 || 12;
+  return `${String(h).padStart(2, '0')}:${minutes} ${ampm}`;
+};
+
 export default function ClinicLandingPage(props) {
   const params = use(props.params);
   const { slug } = params;
@@ -17,10 +26,12 @@ export default function ClinicLandingPage(props) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [scheduledAt, setScheduledAt] = useState(''); // Now stores YYYY-MM-DD
   const [bookingStatus, setBookingStatus] = useState('idle'); // idle, loading, success, error
+  const [formError, setFormError] = useState(null);
+  const [confirmingQueue, setConfirmingQueue] = useState(null);
 
   // UI State
   const [showDiseases, setShowDiseases] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(true);
+  const [showSchedule, setShowSchedule] = useState(false);
   const [theme, setTheme] = useState('dark'); // 'dark', 'light', 'eyecare'
 
   useEffect(() => {
@@ -35,7 +46,22 @@ export default function ClinicLandingPage(props) {
         const json = await res.json();
         setData(json);
       } catch (err) {
-        setError(err.message);
+        console.error('Fetch error:', err.message);
+        // Fallback default data in case the backend is down
+        setData({
+          clinic: {
+            id: 'fallback-id',
+            name: 'العيادة الطبية',
+            doctor_name: 'طبيب العيادة',
+            specialty: 'طب عام',
+            address: 'العنوان غير متاح مؤقتاً',
+            consultation_price: null,
+            treated_diseases: 'استشارة طبية، تشخيص عام، متابعة دورية'
+          },
+          faqs: [],
+          schedules: [],
+          blocked_periods: []
+        });
       } finally {
         setLoading(false);
       }
@@ -44,14 +70,52 @@ export default function ClinicLandingPage(props) {
   }, [slug]);
 
   const handleBooking = async (e) => {
-    e.preventDefault();
+    e && e.preventDefault();
+    setFormError(null);
+
+    // 1. Same-day 2-hours check
+    const isToday = scheduledAt === new Date().toISOString().split('T')[0];
+    if (isToday && data.schedules) {
+      const todayDayOfWeek = new Date().getDay(); // 0 is Sunday
+      const todaySched = data.schedules.find(s => s.day_of_week === todayDayOfWeek);
+      if (todaySched && todaySched.is_working_day && todaySched.shifts && todaySched.shifts.length > 0) {
+        const firstShiftOpen = todaySched.shifts[0].open; // e.g. "14:00"
+        const [openHour, openMin] = firstShiftOpen.split(':').map(Number);
+        const now = new Date();
+        const currentTotalMins = now.getHours() * 60 + now.getMinutes();
+        const openTotalMins = openHour * 60 + openMin;
+
+        if (currentTotalMins >= openTotalMins + 120) {
+          setFormError('عذراً، لقد مضى على بدء الدوام أكثر من ساعتين. يرجى الحجز ليوم غد أو مراجعة العيادة مباشرة.');
+          return;
+        }
+      }
+    }
+
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+
+    // 2. Fetch expected queue number if not confirmed yet
+    if (confirmingQueue === null) {
+      setBookingStatus('loading');
+      try {
+        const res = await fetch(`${backendUrl}/api/appointments/queue-estimate?clinic_id=${data.clinic.id}&date=${scheduledAt}`);
+        if (!res.ok) throw new Error('فشل في حساب الموعد المتوقع');
+        const json = await res.json();
+        setConfirmingQueue(json.expected_queue);
+        setBookingStatus('idle');
+        return; // Wait for user confirmation
+      } catch (err) {
+        setFormError('حدث خطأ أثناء الاتصال. يرجى المحاولة مرة أخرى.');
+        setBookingStatus('idle');
+        return;
+      }
+    }
+
+    // 3. Confirm booking
     setBookingStatus('loading');
     
     try {
-      // Append a generic time or let backend handle it, since input is date-only
       const isoDate = new Date(scheduledAt).toISOString();
-
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
       const res = await fetch(`${backendUrl}/api/appointments/web`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -65,13 +129,22 @@ export default function ClinicLandingPage(props) {
 
       if (!res.ok) throw new Error('فشل في تسجيل الحجز');
       
-      setBookingStatus('success');
+      const resJson = await res.json();
+      
+      if (resJson.whatsappSent) {
+        setBookingStatus('success');
+      } else {
+        setBookingStatus('success_no_whatsapp');
+      }
+      
+      setConfirmingQueue(null);
       setPatientName('');
       setPhoneNumber('');
       setScheduledAt('');
     } catch (err) {
       console.error(err);
-      setBookingStatus('error');
+      setFormError('حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مرة أخرى.');
+      setBookingStatus('idle');
     }
   };
 
@@ -89,10 +162,10 @@ export default function ClinicLandingPage(props) {
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200">
-        <p className="text-xl">{error || 'حدث خطأ غير متوقع'}</p>
+        <p className="text-xl">جاري تحميل البيانات...</p>
       </div>
     );
   }
@@ -134,22 +207,24 @@ export default function ClinicLandingPage(props) {
         </>
       )}
 
-      {/* Theme Toggler Button */}
-      <button 
-        onClick={cycleTheme}
-        className={`fixed top-4 left-4 z-50 p-3 rounded-full backdrop-blur-md transition-transform hover:scale-110 ${glassClasses}`}
-        title="تغيير المظهر"
-      >
-        {theme === 'dark' && <span className="text-2xl leading-none">🌙</span>}
-        {theme === 'light' && <span className="text-2xl leading-none">☀️</span>}
-        {theme === 'eyecare' && <span className="text-2xl leading-none">👁️</span>}
-      </button>
+      {/* Theme Toggler Button - Removed from fixed position */}
 
       <main className="relative z-10 max-w-4xl mx-auto px-4 py-12 flex flex-col gap-8">
         
         {/* Header / Hero Section (Glass Card) */}
-        <header className={`backdrop-blur-xl border rounded-3xl p-8 text-center transition-all ${glassClasses}`}>
-          <h1 className="text-4xl md:text-5xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-l from-blue-600 to-teal-500">
+        <header className={`backdrop-blur-xl border rounded-3xl p-8 text-center transition-all relative ${glassClasses}`}>
+          {/* Theme Toggler Moved Here */}
+          <button 
+            onClick={cycleTheme}
+            className={`absolute top-4 right-4 z-50 p-3 rounded-full backdrop-blur-md transition-transform hover:scale-110 bg-black/10 border-black/10 dark:bg-white/10 dark:border-white/10`}
+            title="تغيير المظهر"
+          >
+            {theme === 'dark' && <span className="text-xl leading-none">🌙</span>}
+            {theme === 'light' && <span className="text-xl leading-none">☀️</span>}
+            {theme === 'eyecare' && <span className="text-xl leading-none">👁️</span>}
+          </button>
+
+          <h1 className="text-4xl md:text-5xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-l from-blue-600 to-teal-500 mt-6">
             {clinic.name}
           </h1>
           <h2 className="text-2xl font-semibold mb-2">
@@ -200,7 +275,7 @@ export default function ClinicLandingPage(props) {
                         <div className="flex flex-col text-sm opacity-90 text-left" dir="ltr">
                           {sched.is_working_day && sched.shifts && sched.shifts.length > 0 ? (
                             sched.shifts.map((shift, sIdx) => (
-                              <span key={sIdx}>{shift.open} - {shift.close}</span>
+                              <span key={sIdx}>{formatTime12Hour(shift.open)} - {formatTime12Hour(shift.close)}</span>
                             ))
                           ) : (
                             <span className="text-red-500 font-bold">مغلق</span>
@@ -277,14 +352,47 @@ export default function ClinicLandingPage(props) {
             أدخل بياناتك وسنقوم بتأكيد موعدك مباشرة عبر الواتساب.
           </p>
 
-          {bookingStatus === 'success' ? (
+          {bookingStatus.startsWith('success') ? (
             <div className="p-6 bg-green-500/10 border border-green-500/30 rounded-2xl text-center relative z-10">
               <span className="text-4xl mb-2 block">✅</span>
               <h4 className="text-xl font-bold text-green-700 dark:text-green-400 mb-2">تم استلام طلبك بنجاح!</h4>
-              <p className="opacity-90">ستصلك رسالة تأكيد على واتساب قريباً.</p>
-              <button onClick={() => setBookingStatus('idle')} className="mt-4 px-6 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors">
+              {bookingStatus === 'success' ? (
+                <p className="opacity-90">ستصلك رسالة تأكيد على واتساب قريباً.</p>
+              ) : (
+                <p className="opacity-90 text-amber-700 dark:text-amber-400">
+                  تم تأكيد الموعد، لكن يرجى مراسلة العيادة على الواتساب لتفعيل الإشعارات والتأكيد النهائي.
+                </p>
+              )}
+              <button onClick={() => { setBookingStatus('idle'); setConfirmingQueue(null); setFormError(null); }} className="mt-4 px-6 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors">
                 حجز موعد آخر
               </button>
+            </div>
+          ) : confirmingQueue !== null ? (
+            <div className="p-6 bg-blue-500/10 border border-blue-500/30 rounded-2xl text-center relative z-10">
+              <span className="text-4xl mb-2 block">🔢</span>
+              <h4 className="text-xl font-bold text-blue-700 dark:text-blue-400 mb-2">تأكيد الموعد</h4>
+              <p className="opacity-90 text-lg mb-4">رقمك المتوقع في الحجز هو: <strong className="text-2xl">{confirmingQueue}</strong></p>
+              
+              {formError && (
+                <p className="text-red-500 font-bold mb-4">{formError}</p>
+              )}
+
+              <div className="flex flex-wrap gap-4 justify-center">
+                <button 
+                  onClick={handleBooking} 
+                  disabled={bookingStatus === 'loading'}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-70"
+                >
+                  {bookingStatus === 'loading' ? 'جاري التأكيد...' : 'نعم، تأكيد الحجز'}
+                </button>
+                <button 
+                  onClick={() => { setConfirmingQueue(null); setFormError(null); }} 
+                  disabled={bookingStatus === 'loading'}
+                  className="px-6 py-3 bg-black/10 text-slate-800 dark:text-white rounded-xl font-medium hover:bg-black/20 transition-colors disabled:opacity-70"
+                >
+                  إلغاء وتعديل
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleBooking} className="flex flex-col gap-5 relative z-10">
@@ -301,15 +409,18 @@ export default function ClinicLandingPage(props) {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="font-semibold opacity-90">رقم الواتساب</label>
+                  <label className="font-semibold opacity-90">رقم الهاتف (واتساب)</label>
                   <input 
                     type="tel" 
                     required 
+                    pattern="^07[0-9]{9}$"
+                    maxLength={11}
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     className="p-3 rounded-xl bg-black/5 border border-black/10 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-all text-left"
-                    placeholder="+964..."
+                    placeholder="مثال: 07729243035"
                     dir="ltr"
+                    title="يجب أن يتكون الرقم من 11 رقماً ويبدأ بـ 07"
                   />
                 </div>
               </div>
@@ -319,14 +430,15 @@ export default function ClinicLandingPage(props) {
                 <input 
                   type="date" 
                   required 
+                  min={new Date().toISOString().split('T')[0]}
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
                   className="p-3 rounded-xl bg-black/5 border border-black/10 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-all"
                 />
               </div>
 
-              {bookingStatus === 'error' && (
-                <p className="text-red-500 font-medium text-sm">حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مرة أخرى.</p>
+              {formError && (
+                <p className="text-red-500 font-bold text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{formError}</p>
               )}
 
               <button 
@@ -345,7 +457,7 @@ export default function ClinicLandingPage(props) {
             <h3 className="text-2xl font-bold mb-4">تواصل معنا 💬</h3>
             <p className="opacity-80 mb-6">يمكنك الاستفسار أو تأكيد الحجز بالتواصل المباشر مع العيادة عبر واتساب.</p>
             <a 
-              href="https://wa.me/964" // Put real phone number logic here if available
+              href="https://wa.me/9647700000000" // ضع رقم العيادة الحقيقي هنا (مثال: 9647729243035)
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-3 bg-[#25D366] hover:bg-[#20bd5a] text-white px-8 py-4 rounded-2xl font-bold text-lg transition-transform hover:scale-105 shadow-lg"
