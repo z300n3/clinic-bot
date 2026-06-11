@@ -276,10 +276,10 @@ export default function ClinicLandingPage(props) {
                         <span className="font-bold text-lg">
                           {sched.day_of_week !== null ? DAYS_MAP[sched.day_of_week] : sched.specific_date}
                         </span>
-                        <div className="flex flex-col text-sm opacity-90 text-left" dir="ltr">
+                        <div className="flex flex-col text-sm opacity-90">
                           {sched.is_working_day && sched.shifts && sched.shifts.length > 0 ? (
                             sched.shifts.map((shift, sIdx) => (
-                              <span key={sIdx}>{formatTime12Hour(shift.open)} - {formatTime12Hour(shift.close)}</span>
+                              <span key={sIdx}>من {formatTime12Hour(shift.open)} إلى {formatTime12Hour(shift.close)}</span>
                             ))
                           ) : (
                             <span className="text-red-500 font-bold">مغلق</span>
