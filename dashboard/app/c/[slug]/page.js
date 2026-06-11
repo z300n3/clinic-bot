@@ -188,6 +188,10 @@ export default function ClinicLandingPage(props) {
     glassClasses = 'bg-white/60 border-white/40 text-slate-800 shadow-xl';
   }
 
+  // Format clinic phone for WhatsApp link
+  const cleanPhone = clinic.phone_number ? clinic.phone_number.replace(/\D/g, '') : '964';
+  const whatsappLink = `https://wa.me/${cleanPhone}`;
+
   return (
     <div className={`min-h-screen relative overflow-hidden font-sans transition-colors duration-500 ${themeClasses}`} dir="rtl">
       
@@ -457,7 +461,7 @@ export default function ClinicLandingPage(props) {
             <h3 className="text-2xl font-bold mb-4">تواصل معنا 💬</h3>
             <p className="opacity-80 mb-6">يمكنك الاستفسار أو تأكيد الحجز بالتواصل المباشر مع العيادة عبر واتساب.</p>
             <a 
-              href="https://wa.me/9647700000000" // ضع رقم العيادة الحقيقي هنا (مثال: 9647729243035)
+              href={whatsappLink}
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-3 bg-[#25D366] hover:bg-[#20bd5a] text-white px-8 py-4 rounded-2xl font-bold text-lg transition-transform hover:scale-105 shadow-lg"
